@@ -1,1 +1,1 @@
-# STM32F103C6T6
+# Code for driving NRF24L01 by stm32
