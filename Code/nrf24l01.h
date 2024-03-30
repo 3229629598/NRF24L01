@@ -5,19 +5,19 @@
 #include "spi.h"
 #include "usbd_cdc_if.h"
 
-#define NRF24L01_IRQ_PIN_READ()  HAL_GPIO_ReadPin(NRF24L01_IRQ_GPIO_Port,NRF24L01_IRQ_Pin)
-
 #define NRF24L01_CE_LOW()   HAL_GPIO_WritePin(NRF24L01_CE_GPIO_Port,NRF24L01_CE_Pin,GPIO_PIN_RESET)
 #define NRF24L01_CE_HIGH() HAL_GPIO_WritePin(NRF24L01_CE_GPIO_Port,NRF24L01_CE_Pin,GPIO_PIN_SET)
 
 #define NRF24L01_SPI_CS_ENABLE()    HAL_GPIO_WritePin(NRF24L01_CSN_GPIO_Port,NRF24L01_CSN_Pin,GPIO_PIN_RESET)
 #define NRF24L01_SPI_CS_DISABLE()   HAL_GPIO_WritePin(NRF24L01_CSN_GPIO_Port,NRF24L01_CSN_Pin,GPIO_PIN_SET)
 
+#define NRF24L01_IRQ_PIN_READ()  HAL_GPIO_ReadPin(NRF24L01_IRQ_GPIO_Port,NRF24L01_IRQ_Pin)
+
 // NRF24L01发送接收数据宽度定义
 #define TX_ADR_WIDTH                                  5   	//5字节的地址宽度
 #define RX_ADR_WIDTH                                  5   	//5字节的地址宽度
-#define TX_PLOAD_WIDTH                                32  	//32字节的用户数据宽度
-#define RX_PLOAD_WIDTH                                32  	//32字节的用户数据宽度
+#define TX_PLOAD_WIDTH                                28  	//32字节的用户数据宽度
+#define RX_PLOAD_WIDTH                                28  	//32字节的用户数据宽度
  
 //NRF24L01寄存器操作命令
 #define NRF_READ_REG                                  0x00  //读配置寄存器,低5位为寄存器地址
@@ -30,7 +30,6 @@
 #define R_RX_PL_WID                                   0x60  //Read RX payload width for the top R_RX_PAYLOAD in the RX FIFO.
 #define W_ACK_PAYLOAD(pipe)                           (0xA8+pipe)  //1010 1PPP: Write Payload to be transmitted together with ACK packet on PIPE PPP.
 #define NOP                                           0xFF  //空操作,可以用来读状态寄存器
-
 //SPI(NRF24L01)寄存器地址
 #define CONFIG                                        0x00  //配置寄存器地址;bit0:1接收模式,0发射模式;bit1:电选择;bit2:CRC模式;bit3:CRC使能;
                                                             //bit4:中断MAX_RT(达到最大重发次数中断)使能;bit5:中断TX_DS使能;bit6:中断RX_DR使能
@@ -45,6 +44,7 @@
 #define MAX_TX  		                              0x10  //达到最大发送次数中断
 #define TX_OK   		                              0x20  //TX发送完成中断
 #define RX_OK   		                              0x40  //接收到数据中断
+
 #define OBSERVE_TX                                    0x08  //发送检测寄存器,bit7:4,数据包丢失计数器;bit3:0,重发计数器
 #define CD                                            0x09  //载波检测寄存器,bit0,载波检测;
 #define RX_ADDR_P0                                    0x0A  //数据通道0接收地址,最大长度5个字节,低字节在前
@@ -67,71 +67,21 @@
                                                             //bit1: EN_ACK_PAY  Enables Payload with ACK
                                                             //bit2: EN_DPL      Enables Dynamic Payload Length
 
-typedef struct
-{
-    uint8_t prim_rx;    //RX/TX control 
-                        //1: PRX, 0: PTX 
-    
-    uint8_t pwr_up;     //1: POWER UP, 0:POWER DOWN
+void NRF24L01_MRX_Mode(void);					//主机接收模式
+void NRF24L01_MTX_Mode(void);					//主机发送模式
+void NRF24L01_SRX_Mode(void);					//从机接收模式
+void NRF24L01_STX_Mode(void);					//从机发送模式
+uint8_t NRF24L01_Write_Buf(uint8_t reg, uint8_t *pBuf, uint8_t uint8_ts);//写数据区
+uint8_t NRF24L01_Read_Buf(uint8_t reg, uint8_t *pBuf, uint8_t uint8_ts);	//读数据区		  
+uint8_t NRF24L01_Read_Reg(uint8_t reg);					//读寄存器
+uint8_t NRF24L01_Write_Reg(uint8_t reg, uint8_t value);		//写寄存器
+uint8_t NRF24L01_Check(void);						//检查24L01是否存在
+uint8_t NRF24L01_TxPacket(uint8_t *txbuf);				//发送一个包的数据
+uint8_t NRF24L01_RxPacket(uint8_t *rxbuf);				//接收一个包的数据
+void NRF24L01_RX_Mode(void);
+void NRF24L01_TX_Mode(void);
+void NRF_LowPower_Mode(void);
 
-    uint8_t crco;       //CRC encoding scheme
-                        //'0' - 1 byte
-                        //'1' – 2 bytes
-
-    uint8_t en_crc;     //Enable CRC. Forced high if one of the bits in the EN_AA is high
-
-    uint8_t mask_max_rt;//Mask interrupt caused by MAX_RT
-                        //1: Interrupt not reflected on the IRQ pin
-                        //0: Reflect MAX_RT as active low interrupt on the IRQ pin
-
-    uint8_t mask_tx_ds; //Mask interrupt caused by TX_DS
-                        //1: Interrupt not reflected on the IRQ pin
-                        //0: Reflect TX_DS as active low interrupt on the IRQ pin
-
-    uint8_t mask_rx_dr; //Mask interrupt caused by RX_DR
-                        //1: Interrupt not reflected on the IRQ pin
-                        //0: Reflect RX_DR as active low interrupt on the IRQ pin
-}nrf_config_str;
-
-typedef struct
-{
-    uint8_t tx_full;    //TX FIFO full flag. 
-                        //1: TX FIFO full. 
-                        //0: Available locations in TX FIFO.
-
-    uint8_t rx_p_no;    //Data pipe number for the payload available for 
-                        //reading from RX_FIFO
-                        //000-101: Data Pipe Number
-                        //110: Not Used
-                        //111: RX FIFO Empty
-
-    uint8_t max_rt;     //Maximum number of TX retransmits interrupt
-                        //Write 1 to clear bit. If MAX_RT is asserted it must be cleared to enable further communication.
-    
-    uint8_t tx_ds;      //Data Sent TX FIFO interrupt. Asserted when packet transmitted on TX. If AUTO_ACK is activated, this bit is set high only when ACK is received.
-                        //Write 1 to clear bit.
-    
-    uint8_t rx_dr;      //Data Ready RX FIFO interrupt. Asserted when new data arrives RX FIFOc.
-                        //Write 1 to clear bit.
-}nrf_status_str;
-
-extern nrf_status_str nrf_status;
-
-uint8_t nrf_rx_init(void);
-uint8_t nrf_tx_init(void);
-
-uint8_t nrf_read_data(uint8_t command, uint8_t* buf, uint16_t len);
-uint8_t nrf_write_data(uint8_t command, uint8_t* buf, uint16_t len);
-uint8_t nrf_send(uint8_t command, uint8_t* buf, uint16_t len);
-
-uint8_t nrf_config(nrf_config_str nrf_config);
-uint8_t nrf_set_addr(uint8_t* rx_addr, uint8_t* tx_addr);
-uint8_t nrf_read_reg(uint8_t reg, uint8_t* value);
-uint8_t nrf_write_reg(uint8_t reg, uint8_t value);
-
-uint8_t nrf_check(void);
-uint8_t nrf_low_power_mode(void);
-
-void nrf_IRQHandler(void);
+#define nrf_mode 0	//主机1,从机0
 
 #endif

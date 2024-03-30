@@ -22,7 +22,7 @@
 #include "stm32f1xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "launch.h"
+#include "bringup.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -206,7 +206,7 @@ void SysTick_Handler(void)
 void EXTI2_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI2_IRQn 0 */
-  nrf_IRQHandler();
+	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   /* USER CODE END EXTI2_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(NRF24L01_IRQ_Pin);
   /* USER CODE BEGIN EXTI2_IRQn 1 */
@@ -234,7 +234,7 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 void TIM3_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM3_IRQn 0 */
-  launch_tim_loop();
+  bringup_tim3_loop();
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */

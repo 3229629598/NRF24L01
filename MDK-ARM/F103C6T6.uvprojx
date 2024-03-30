@@ -583,9 +583,9 @@
           <GroupName>Code</GroupName>
           <Files>
             <File>
-              <FileName>launch.c</FileName>
+              <FileName>bringup.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Code\launch.c</FilePath>
+              <FilePath>..\Code\bringup.c</FilePath>
             </File>
             <File>
               <FileName>nrf24l01.c</FileName>

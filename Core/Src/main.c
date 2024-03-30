@@ -25,7 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "launch.h"
+#include "bringup.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -92,7 +92,7 @@ int main(void)
   MX_TIM3_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-  launch_init();
+  bringup_init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -100,7 +100,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
+    bringup_main_loop();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
